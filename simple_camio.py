@@ -347,6 +347,7 @@ timer = time.time() - 1
 # Main loop
 while cap.isOpened():
     ret, frame = cap.read()
+    #frame = cv.imread('/Users/rcrabb/Documents/IMG_1022.jpg', cv.IMREAD_COLOR)
     if not ret:
         print("No camera image returned.")
         break
