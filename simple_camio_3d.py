@@ -3,7 +3,9 @@ import numpy as np
 import pyglet
 import os
 import csv
+import random
 import time
+import pickle
 from scipy import stats
 from collections import deque
 
@@ -79,6 +81,7 @@ class SIFTModelDetector:
 
 class InteractionPolicyOBJ:
     def __init__(self, model, intrinsic_matrix):
+        self.vertices = None
         self.model = model
         self.ZONE_FILTER_SIZE = 5
         self.D_SET_THRESHOLD = 1
@@ -86,10 +89,16 @@ class InteractionPolicyOBJ:
         self.zone_filter = -1 * np.ones(self.ZONE_FILTER_SIZE, dtype=int)
         self.zone_filter_cnt = 0
         self.intrinsic_matrix = intrinsic_matrix
-        self.map_obj = OBJ(model["model_file"], model.get("excluded_regions",[]), swapyz=True)
-        R = np.array(model["model_rotation"], dtype=np.float32)
-        T = np.array(model["model_translation"], dtype=np.float32)
-        offset = np.array(model["model_offset"], dtype=np.float32)
+        if "model_file" in model:
+            self.map_obj = OBJ(model["model_file"], model.get("excluded_regions",[]), swapyz=True)
+        else:
+            self.map_obj = vertexOBJ(model["vertex_file"], model["label_file"])
+        self.set_points()
+
+    def set_points(self):
+        R = np.array(self.model["model_rotation"], dtype=np.float32)
+        T = np.array(self.model["model_translation"], dtype=np.float32)
+        offset = np.array(self.model["model_offset"], dtype=np.float32)
         vertices = np.array(self.map_obj.vertices, dtype=np.float32).transpose()
         vertsmult = np.matmul(R, vertices) + T - offset
         self.vertices = vertsmult.transpose()
@@ -101,6 +110,11 @@ class InteractionPolicyOBJ:
         self.vertices = np.squeeze(vertices)
         self.D_SET_THRESHOLD = 10
         self.D_THRESHOLD = 2.0 * self.D_SET_THRESHOLD
+
+    def get_vertices_bounds(self):
+        minvals = np.min(self.vertices, axis=0).astype(int)
+        maxvals = np.max(self.vertices, axis=0).astype(int)
+        return minvals, maxvals
 
     def push_gesture(self, position):
         min_idx, dist = find_closest_point(position, self.vertices)
@@ -149,6 +163,25 @@ class GestureDetector:
         else:
             return position, 'moving'
 
+
+class vertexOBJ:
+    def __init__(self, vertex_filename, labels_filename):
+        self.vertices_full = np.load(vertex_filename)
+        with open(labels_filename, 'rb') as fp:
+            labels = pickle.load(fp)
+        sample_list = range(len(labels))#random.sample(range(len(labels)),50000)
+        self.vertices = np.array([self.vertices_full[i,:] for i in sample_list])
+        self.Region_names = list()
+        index = -1
+        self.vertex_reg_id_full = []
+        for label in labels:
+            if label in self.Region_names:
+                self.vertex_reg_id_full.append(index)
+            else:
+                index = index + 1
+                self.Region_names.append(label)
+                self.vertex_reg_id_full.append(index)
+        self.vertex_reg_id = [self.vertex_reg_id_full[i] for i in sample_list]
 
 # Class to load and represent an object file
 class OBJ:

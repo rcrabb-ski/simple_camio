@@ -12,7 +12,7 @@ from collections import deque
 from simple_camio_3d import SIFTModelDetector, InteractionPolicyOBJ, CamIOPlayerOBJ
 from simple_camio_2d import InteractionPolicy2D, CamIOPlayer2D, ModelDetectorAruco, parse_aruco_codes, get_aruco_dict_id_from_string, sort_corners_by_id
 from simple_camio_mp import PoseDetectorMP
-from simple_camio_mp_3d import PoseDetectorMP3D
+from simple_camio_mp_3d import PoseDetectorMP3D, TouchModelDetector
 
 
 # The PoseDetector class determines the pose of the pointer, and returns the
@@ -274,12 +274,12 @@ cam_port = select_cam_port()
 # ========================================
 
 parser = argparse.ArgumentParser(description='Code for CamIO.')
-parser.add_argument('--input1', help='Path to input zone image.', default='UkraineMap.json')
+parser.add_argument('--input1', help='Path to input zone image.', default='models/MagicMap/MagicMap.json')
 args = parser.parse_args()
 
 # Load map and camera parameters
 model = load_map_parameters(args.input1)
-intrinsic_matrix = load_camera_parameters('camera_parameters.json')
+intrinsic_matrix = load_camera_parameters('camera_parameters.json') #np.array([[3028, 0, 1512],[0, 3028, 2016],[0, 0, 1]], dtype=np.float32) #
 
 # Initialize objects
 if model["modelType"] == "2D":
@@ -325,6 +325,17 @@ elif model["modelType"] == "mediapipe_3d":
     camio_player.play_welcome()
     crickets_player = AmbientSoundPlayer(model['crickets'])
     heartbeat_player = AmbientSoundPlayer(model['heartbeat'])
+elif model["modelType"] == "mediapipe_3d_touch":
+    model_detector = TouchModelDetector(model, intrinsic_matrix)
+    pose_detector = PoseDetectorMP3D()
+    gesture_detector = GestureDetector()
+    motion_filter = MovementMedianFilter()
+    image_annotator = ImageAnnotator(intrinsic_matrix)
+    interact = InteractionPolicyOBJ(model, intrinsic_matrix)
+    camio_player = CamIOPlayerOBJ(model)
+    camio_player.play_welcome()
+    crickets_player = AmbientSoundPlayer(model['crickets'])
+    heartbeat_player = AmbientSoundPlayer(model['heartbeat'])
 heartbeat_player.set_volume(.05)
 cap = cv.VideoCapture(cam_port)
 cap.set(cv.CAP_PROP_FRAME_HEIGHT, 1080)  # set camera image height
@@ -349,6 +360,7 @@ while cap.isOpened():
             break
         if waitkey == ord('r'):
             model_detector.requires_pnp = True
+            interact.set_points()
     prev_time = timer
     timer = time.time()
     elapsed_time = timer - prev_time
@@ -356,12 +368,16 @@ while cap.isOpened():
     pyglet.clock.tick()
     pyglet.app.platform_event_loop.dispatch_posted_events()
     img_scene_color = frame.copy()
-    loop_has_run = True
 
-    # load images grayscale
-    img_scene_gray = cv.cvtColor(img_scene_color, cv.COLOR_BGR2GRAY)
-    # Detect aruco markers for map in image
-    retval, rvec, tvec = model_detector.detect(img_scene_gray)
+    if model["modelType"] == "mediapipe_3d_touch":
+        retval, rvec, tvec = model_detector.detect(frame)
+
+    else:
+        loop_has_run = True
+        # load images grayscale
+        img_scene_gray = cv.cvtColor(img_scene_color, cv.COLOR_BGR2GRAY)
+        # Detect aruco markers for map in image
+        retval, rvec, tvec = model_detector.detect(img_scene_gray)
 
     # If no  markers found, continue to next iteration
     if not retval:
@@ -369,6 +385,7 @@ while cap.isOpened():
         crickets_player.play_sound()
         continue
 
+    loop_has_run = True
     crickets_player.pause_sound()
     # Annotate image with 3D points and axes
     if model["modelType"] == "2D":
@@ -384,13 +401,22 @@ while cap.isOpened():
             continue
 
         heartbeat_player.play_sound()
-    elif model["modelType"] == "mediapipe_3d":
+    elif model["modelType"] == "mediapipe_3d" or model["modelType"] == "mediapipe_3d_touch":
         interact.project_vertices(rvec, tvec)
+        minvals = [0,0]
+        # minvals, maxvals = interact.get_vertices_bounds()
+        # frame_cropped = frame[minvals[1]:maxvals[1], minvals[0]:maxvals[0]]
         gesture_loc, gesture_status, img_scene_color = pose_detector.detect(frame)
+        # frame[minvals[1]:maxvals[1], minvals[0]:maxvals[0]] = img_scene_color
+        # img_scene_color = frame
         img_scene_color = image_annotator.annotate_image(img_scene_color, [], rvec, tvec)
+        for vertex in interact.vertices:
+            img_scene_color = cv.circle(img_scene_color, (int(vertex[0]), int(vertex[1])), 1, (255, 0, 0), 1)
         if gesture_loc is None:
             heartbeat_player.pause_sound()
             continue
+        else:
+            gesture_loc = np.array([gesture_loc[0] + minvals[0], gesture_loc[1] + minvals[1]])
 
         heartbeat_player.play_sound()
     else:
@@ -410,7 +436,7 @@ while cap.isOpened():
         gesture_loc, gesture_status = gesture_detector.push_position(point_of_interest)
 
     if gesture_status != "moving":
-        if model['modelType'] != "mediapipe_3d":
+        if model['modelType'] != "mediapipe_3d" and model['modelType'] != "mediapipe_3d_touch":
             img_scene_color = image_annotator.draw_points_in_image(img_scene_color, gesture_loc, rvec, tvec)
         else:
             img_scene_color = image_annotator.draw_point_in_image(img_scene_color, gesture_loc)
