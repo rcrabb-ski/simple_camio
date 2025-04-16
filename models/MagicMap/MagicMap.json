@@ -1,7 +1,7 @@
 {
     "model": {
       "name":"Magic Map",
-      "template_image":"/Users/rcrabb/Documents/magic_map_poster_mini.png",
+      "template_image":"models/MagicMap/magic_map_poster_mini.png",
       "blipsound":"MP3/quick_blip.wav",
       "welcome_message":"MP3/welcome.mp3",
       "goodbye_message":"MP3/goodbye.mp3",
@@ -12,7 +12,7 @@
       "hull_area_thresh": 6000,
       "inliers_thresh": 20,
       "stylus_file": "HalfCubeStylus.json",
-      "model_file": "/Users/rcrabb/Dropbox (ski.org)/Mac/Downloads/sparse.obj",
+      "model_file": "models/MagicMap/sparse.obj",
       "excluded_regions": ["GROUND_SPARSE_023", "CURBS_SPARSE_051","MISC_SPARSE_034", "ZONE"],
       "soundfile_mapping":"models/MagicMap/Name-Mapping4.csv",
       "model_rotation": [[0.1,0,0],[0,0.1,0],[0,0,-0.1]],
